@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ChevronRight, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, CheckCircle2, Volume2 } from "lucide-react";
 import { VOCABULARY } from "@/lib/vocabulary";
 import { getUnlearnedWords, markWordLearned } from "@/lib/storage";
+import { speakItalian } from "@/lib/speech";
 
 const SESSION_SIZE = 5;
 
@@ -12,6 +13,7 @@ export default function Learn() {
   const [sessionWords, setSessionWords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [done, setDone] = useState(false);
+  const [showTranslation, setShowTranslation] = useState(false);
 
   useEffect(() => {
     const unlearned = getUnlearnedWords(VOCABULARY);
@@ -27,6 +29,7 @@ export default function Learn() {
     }
     if (currentIndex < sessionWords.length - 1) {
       setCurrentIndex((i) => i + 1);
+      setShowTranslation(false);
     } else {
       setDone(true);
     }
@@ -145,10 +148,58 @@ export default function Learn() {
 
             {/* Word content */}
             <div className="p-7 text-center">
-              <h2 className="text-3xl font-bold text-stone-900 mb-1">{currentWord.italian}</h2>
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <h2 className="text-3xl font-bold text-stone-900">{currentWord.italian}</h2>
+                <button
+                  onClick={() => speakItalian(currentWord.italian)}
+                  className="w-9 h-9 rounded-full bg-stone-100 hover:bg-emerald-100 flex items-center justify-center transition-colors"
+                  aria-label="Listen to word"
+                >
+                  <Volume2 className="w-5 h-5 text-emerald-600" />
+                </button>
+              </div>
               <p className="text-lg text-emerald-600 font-medium mb-4">{currentWord.english}</p>
-              <div className="bg-stone-50 rounded-xl p-3.5 border border-stone-100">
-                <p className="text-stone-600 italic text-sm">"{currentWord.example}"</p>
+              <div
+                className="bg-amber-50 rounded-2xl p-4 border-2 border-amber-200 cursor-pointer text-left"
+                onClick={() => setShowTranslation((v) => !v)}
+              >
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      speakItalian(currentWord.example);
+                    }}
+                    className="shrink-0 w-8 h-8 rounded-full bg-white border border-amber-200 flex items-center justify-center hover:bg-amber-100 transition-colors"
+                    aria-label="Listen to sentence"
+                  >
+                    <Volume2 className="w-4 h-4 text-amber-600" />
+                  </button>
+                  <p className="text-amber-900 font-medium text-sm flex-1">"{currentWord.example}"</p>
+                </div>
+                {showTranslation ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {currentWord.exampleWords.map(([it, en], i) => (
+                        <span
+                          key={i}
+                          className="bg-white rounded-lg px-2 py-1 border border-amber-200 text-center"
+                        >
+                          <span className="block text-sm font-semibold text-stone-800 leading-tight">{it}</span>
+                          <span className="block text-[11px] text-amber-700 leading-tight">{en}</span>
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-stone-500 mt-2 italic">"{currentWord.exampleEn}"</p>
+                  </motion.div>
+                ) : (
+                  <p className="text-[11px] text-amber-600 text-center mt-2">
+                    Tap for word-by-word translation
+                  </p>
+                )}
               </div>
             </div>
           </motion.div>

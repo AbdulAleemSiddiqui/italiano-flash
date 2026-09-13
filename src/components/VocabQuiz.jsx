@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Check, X } from "lucide-react";
+import { ArrowLeft, Check, X, Volume2 } from "lucide-react";
 import { recordReview } from "@/lib/storage";
 import { shuffle, buildQuestions } from "@/lib/quiz";
+import { speakItalian } from "@/lib/speech";
 
 export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "Nothing to review yet", emptyMessage = "Learn some words first, then come back!" }) {
   const navigate = useNavigate();
@@ -159,7 +160,18 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
               {question.promptEmoji && (
                 <span className="text-5xl mb-3 block">{question.promptEmoji}</span>
               )}
-              <h2 className="text-3xl font-bold text-stone-900">{question.prompt}</h2>
+              <div className="flex items-center justify-center gap-2">
+                <h2 className="text-3xl font-bold text-stone-900">{question.prompt}</h2>
+                {question.askItalian && (
+                  <button
+                    onClick={() => speakItalian(question.prompt)}
+                    className="w-9 h-9 rounded-full bg-stone-100 hover:bg-emerald-100 flex items-center justify-center transition-colors"
+                    aria-label="Listen to word"
+                  >
+                    <Volume2 className="w-5 h-5 text-emerald-600" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Options */}
