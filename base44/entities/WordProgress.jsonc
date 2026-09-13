@@ -1,0 +1,47 @@
+{
+  "name": "WordProgress",
+  "type": "object",
+  "properties": {
+    "word_id": {
+      "type": "number"
+    },
+    "level": {
+      "type": "number",
+      "default": 0
+    },
+    "correct_count": {
+      "type": "number",
+      "default": 0
+    },
+    "wrong_count": {
+      "type": "number",
+      "default": 0
+    },
+    "learned_date": {
+      "type": "number"
+    },
+    "next_review": {
+      "type": "number"
+    },
+    "last_reviewed": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "word_id"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

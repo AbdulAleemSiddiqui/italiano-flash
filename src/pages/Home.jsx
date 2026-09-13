@@ -1,57 +1,87 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { BookOpen, RefreshCw, ChevronRight, Sparkles } from "lucide-react";
+import { BookOpen, RefreshCw, ChevronRight, Sparkles, Zap } from "lucide-react";
 import { VOCABULARY } from "@/lib/vocabulary";
-import { getStats, getUnlearnedWords } from "@/lib/storage";
+import { getStats, getUnlearnedWords, ensureSynced, isReturningVisit } from "@/lib/storage";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Home() {
+  const { user } = useAuth();
   const [stats, setStats] = useState({ learnedToday: 0, dueReview: 0, totalLearned: 0, totalWords: VOCABULARY.length });
   const [canLearn, setCanLearn] = useState(true);
+  const [syncing, setSyncing] = useState(true);
+  const [welcomeBack, setWelcomeBack] = useState(false);
 
   useEffect(() => {
-    const refresh = () => {
+    let mounted = true;
+    (async () => {
+      try {
+        await ensureSynced(user?.id);
+      } catch (e) {
+        console.warn("Could not sync progress:", e);
+      }
+      if (!mounted) return;
+      setSyncing(false);
       setStats(getStats(VOCABULARY));
       setCanLearn(getUnlearnedWords(VOCABULARY).length > 0);
+      setWelcomeBack(isReturningVisit());
+    })();
+    return () => {
+      mounted = false;
     };
-    refresh();
-    // refresh when returning to this page (e.g. from Learn/Review)
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, []);
+  }, [user?.id]);
+
+  if (syncing) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-100 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-stone-200 border-t-emerald-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const progress = Math.round((stats.totalLearned / stats.totalWords) * 100);
+  const firstName = (user?.full_name || user?.email || "there").split(" ")[0].split("@")[0];
+  const initials = (user?.full_name || user?.email || "?").trim().slice(0, 2).toUpperCase();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-100 flex flex-col">
       {/* Header */}
-      <div className="px-6 pt-14 pb-6">
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-2 mb-1"
+      <div className="px-6 pt-14 pb-6 flex items-start justify-between">
+        <div>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-2 mb-1"
+          >
+            <span className="text-3xl">🇮🇹</span>
+            <span className="text-xs font-semibold tracking-widest text-stone-400 uppercase">
+              7-Day Exam Prep
+            </span>
+          </motion.div>
+          <motion.h1
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="text-4xl font-bold text-stone-900 tracking-tight"
+          >
+            Italian A2
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="text-stone-500 mt-1"
+          >
+            Ciao {firstName}! Learn & review daily
+          </motion.p>
+        </div>
+        <Link
+          to="/profile"
+          className="shrink-0 w-11 h-11 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-emerald-600/20"
         >
-          <span className="text-3xl">🇮🇹</span>
-          <span className="text-xs font-semibold tracking-widest text-stone-400 uppercase">
-            7-Day Exam Prep
-          </span>
-        </motion.div>
-        <motion.h1
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="text-4xl font-bold text-stone-900 tracking-tight"
-        >
-          Italian A2
-        </motion.h1>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="text-stone-500 mt-1"
-        >
-          Learn & review vocabulary daily
-        </motion.p>
+          {initials}
+        </Link>
       </div>
 
       {/* Progress bar */}
@@ -99,6 +129,32 @@ export default function Home() {
           <p className="text-3xl font-bold text-stone-900">{stats.dueReview}</p>
         </motion.div>
       </div>
+
+      {/* Welcome back — quick quiz on memorized words */}
+      {welcomeBack && stats.totalLearned > 0 && (
+        <div className="px-6 mb-6">
+          <Link to="/quick-quiz">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-2xl p-5 flex items-center justify-between shadow-lg shadow-violet-600/20 cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                  <Zap className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-lg">Welcome back! 👋</p>
+                  <p className="text-violet-100 text-sm">Quick quiz on your memorized words</p>
+                </div>
+              </div>
+              <ChevronRight className="w-6 h-6 text-white" />
+            </motion.div>
+          </Link>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="px-6 space-y-3 flex-1">

@@ -1,15 +1,23 @@
-// Local storage + simple spaced repetition for the Italian A2 vocabulary trainer.
+// Progress storage: localStorage (fast, offline) + per-user sync to the WordProgress entity.
+import { base44 } from "@/api/base44Client";
 
-const STORAGE_KEY = "italian_a2_progress";
+const LEGACY_KEY = "italian_a2_progress"; // pre-login data on this device
+const LAST_ACTIVE_KEY = "italian_a2_last_active";
 
 // Spaced repetition intervals (in days) by level.
-// Wrong answers reset to level 0 (review next day).
-// Correct answers increase the level, pushing the next review further out.
+// Wrong answers reset to level 0 (review sooner); correct answers push reviews further out.
 const LEVEL_INTERVALS = [1, 1, 2, 3, 5, 7, 14];
+
+let storageKey = LEGACY_KEY;
+
+// Scope progress to the logged-in user so accounts don't mix on shared devices.
+export function setUserScope(userId) {
+  storageKey = userId ? `italian_a2_progress_${userId}` : LEGACY_KEY;
+}
 
 function loadProgress() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return {};
     return JSON.parse(raw);
   } catch {
@@ -18,18 +26,13 @@ function loadProgress() {
 }
 
 function saveProgress(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-// records: { [wordId]: { learnedDate, level, nextReview, correctCount, wrongCount, lastReviewed } }
-function getRecords() {
-  return loadProgress();
+  localStorage.setItem(storageKey, JSON.stringify(data));
 }
 
 // --- Learn ---
 
 export function getUnlearnedWords(allWords) {
-  const records = getRecords();
+  const records = loadProgress();
   return allWords.filter((w) => !records[w.id]);
 }
 
@@ -45,12 +48,13 @@ export function markWordLearned(wordId) {
     lastReviewed: null,
   };
   saveProgress(data);
+  schedulePush(wordId);
 }
 
 // --- Review ---
 
 export function getDueReviewWords(allWords) {
-  const records = getRecords();
+  const records = loadProgress();
   const now = Date.now();
   return allWords.filter((w) => {
     const r = records[w.id];
@@ -59,7 +63,7 @@ export function getDueReviewWords(allWords) {
 }
 
 export function getAllLearnedWords(allWords) {
-  const records = getRecords();
+  const records = loadProgress();
   return allWords.filter((w) => records[w.id]);
 }
 
@@ -82,12 +86,13 @@ export function recordReview(wordId, correct) {
 
   data[wordId] = r;
   saveProgress(data);
+  schedulePush(wordId);
 }
 
 // --- Stats for Home screen ---
 
 export function getStats(allWords) {
-  const records = getRecords();
+  const records = loadProgress();
   const now = Date.now();
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -110,4 +115,128 @@ export function getStats(allWords) {
     totalLearned,
     totalWords: allWords.length,
   };
+}
+
+// --- Returning-visit detection (drives the quick-quiz prompt) ---
+
+export function isReturningVisit() {
+  const learned = Object.keys(loadProgress()).length;
+  const last = localStorage.getItem(LAST_ACTIVE_KEY);
+  const today = new Date().toDateString();
+  localStorage.setItem(LAST_ACTIVE_KEY, today);
+  return learned > 0 && last !== null && last !== today;
+}
+
+// --- Server sync (per-user, survives device changes) ---
+
+let entityIdMap = null; // word_id -> WordProgress record id
+
+function toServerPayload(wordId, rec) {
+  return {
+    word_id: wordId,
+    level: rec.level || 0,
+    correct_count: rec.correctCount || 0,
+    wrong_count: rec.wrongCount || 0,
+    learned_date: rec.learnedDate || Date.now(),
+    next_review: rec.nextReview || Date.now(),
+    last_reviewed: rec.lastReviewed || 0,
+  };
+}
+
+// Load server progress, merge with this device's data, migrate pre-login
+// (legacy) memorized words, and push anything the server doesn't have yet.
+export async function ensureSynced(userId) {
+  setUserScope(userId);
+  entityIdMap = {};
+
+  const merged = loadProgress();
+
+  // Migrate pre-login progress from this device — keeps the words the user
+  // already memorized before logging in.
+  const legacyRaw = localStorage.getItem(LEGACY_KEY);
+  if (legacyRaw) {
+    try {
+      const legacy = JSON.parse(legacyRaw);
+      for (const [id, rec] of Object.entries(legacy)) {
+        if (!merged[id] || (rec.lastReviewed || 0) > (merged[id].lastReviewed || 0)) {
+          merged[id] = rec;
+        }
+      }
+    } catch {
+      // ignore malformed legacy data
+    }
+  }
+
+  // Merge in server records (server wins when more recent).
+  const serverRecords = await base44.entities.WordProgress.list("-updated_date", 500);
+  for (const r of serverRecords) {
+    entityIdMap[r.word_id] = r.id;
+    const local = merged[r.word_id];
+    const serverStamp = r.last_reviewed || r.learned_date || 0;
+    const localStamp = local ? local.lastReviewed || local.learnedDate || 0 : 0;
+    if (!local || serverStamp > localStamp) {
+      merged[r.word_id] = {
+        learnedDate: r.learned_date || 0,
+        level: r.level || 0,
+        nextReview: r.next_review || 0,
+        correctCount: r.correct_count || 0,
+        wrongCount: r.wrong_count || 0,
+        lastReviewed: r.last_reviewed || null,
+      };
+    }
+  }
+
+  // Push any local/legacy records the server doesn't have yet.
+  const missing = Object.keys(merged)
+    .map(Number)
+    .filter((id) => !entityIdMap[id]);
+  if (missing.length) {
+    const payloads = missing.map((id) => toServerPayload(id, merged[id]));
+    const created = await base44.entities.WordProgress.bulkCreate(payloads);
+    created.forEach((rec, i) => {
+      entityIdMap[payloads[i].word_id] = rec.id;
+    });
+  }
+
+  saveProgress(merged);
+  if (legacyRaw) localStorage.removeItem(LEGACY_KEY); // migrated — don't hand it to another account
+}
+
+// Debounced push of local mutations to the server.
+let pendingIds = new Set();
+let flushTimer = null;
+
+export function schedulePush(wordId) {
+  pendingIds.add(wordId);
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(flushPending, 1500);
+}
+
+async function flushPending() {
+  const ids = [...pendingIds];
+  pendingIds = new Set();
+  flushTimer = null;
+  const local = loadProgress();
+  for (const id of ids) {
+    const rec = local[id];
+    if (!rec) continue;
+    try {
+      if (entityIdMap && entityIdMap[id]) {
+        await base44.entities.WordProgress.update(entityIdMap[id], toServerPayload(id, rec));
+      } else {
+        const existing = await base44.entities.WordProgress.filter({ word_id: id });
+        if (existing.length) {
+          entityIdMap = entityIdMap || {};
+          entityIdMap[id] = existing[0].id;
+          await base44.entities.WordProgress.update(existing[0].id, toServerPayload(id, rec));
+        } else {
+          const created = await base44.entities.WordProgress.create(toServerPayload(id, rec));
+          entityIdMap = entityIdMap || {};
+          entityIdMap[id] = created.id;
+        }
+      }
+    } catch (e) {
+      console.warn("Progress sync failed — will retry on next visit:", e);
+    }
+  }
 }
