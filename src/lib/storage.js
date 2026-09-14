@@ -10,11 +10,13 @@ const LEVEL_INTERVALS = [1, 1, 2, 3, 5, 7, 14];
 
 let storageKey = LEGACY_KEY;
 let streakKey = "italian_a2_streak";
+let reviewCursorKey = "italian_a2_review_cursor";
 
 // Scope progress to the logged-in user so accounts don't mix on shared devices.
 export function setUserScope(userId) {
   storageKey = userId ? `italian_a2_progress_${userId}` : LEGACY_KEY;
   streakKey = userId ? `italian_a2_streak_${userId}` : "italian_a2_streak";
+  reviewCursorKey = userId ? `italian_a2_review_cursor_${userId}` : "italian_a2_review_cursor";
 }
 
 function loadProgress() {
@@ -152,6 +154,28 @@ export function getStreak() {
   } catch {
     return 0;
   }
+}
+
+// --- Sequential review batches ---
+
+// Each review session serves the NEXT 20 memorized words (wrapping around
+// after a full pass), so users revise fresh words instead of the same set.
+export function getNextReviewBatch(allWords, batchSize = 20) {
+  const learned = getAllLearnedWords(allWords);
+  if (!learned.length) return { words: [], revised: 0, total: 0 };
+
+  let cursor = parseInt(localStorage.getItem(reviewCursorKey) || "0", 10) || 0;
+  if (cursor >= learned.length) cursor = 0;
+
+  const words = learned.slice(cursor, cursor + batchSize);
+  const completedPass = cursor + words.length >= learned.length;
+  localStorage.setItem(reviewCursorKey, String(completedPass ? 0 : cursor + words.length));
+
+  return {
+    words,
+    revised: completedPass ? learned.length : cursor + words.length,
+    total: learned.length,
+  };
 }
 
 // --- Difficult words (for recap) ---
