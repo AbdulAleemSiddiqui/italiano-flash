@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { BookOpen, RefreshCw, ChevronRight, Sparkles, Zap, Flame, Brain } from "lucide-react";
 import { VOCABULARY, computeUserLevel, wordsToNextLevel } from "@/lib/vocabulary";
-import { getStats, getUnlearnedWords, getStreak, ensureSynced, isReturningVisit } from "@/lib/storage";
+import { getStats, getUnlearnedWords, getStreak, getStartLevel, ensureSynced, isReturningVisit } from "@/lib/storage";
 import { useAuth } from "@/lib/AuthContext";
+import LevelPicker from "@/components/LevelPicker";
 
 export default function Home() {
   const { user } = useAuth();
@@ -13,6 +14,7 @@ export default function Home() {
   const [syncing, setSyncing] = useState(true);
   const [welcomeBack, setWelcomeBack] = useState(false);
   const [streak, setStreak] = useState(0);
+  const [needsLevel, setNeedsLevel] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -24,8 +26,10 @@ export default function Home() {
       }
       if (!mounted) return;
       setSyncing(false);
-      setStats(getStats(VOCABULARY));
+      const s = getStats(VOCABULARY);
+      setStats(s);
       setCanLearn(getUnlearnedWords(VOCABULARY).length > 0);
+      setNeedsLevel(!getStartLevel() && s.totalLearned === 0);
       setWelcomeBack(isReturningVisit());
       setStreak(getStreak());
     })();
@@ -39,6 +43,18 @@ export default function Home() {
       <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-100 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-stone-200 border-t-emerald-600 rounded-full animate-spin" />
       </div>
+    );
+  }
+
+  // First visit: ask the learner's Italian level so new words match it.
+  if (needsLevel) {
+    return (
+      <LevelPicker
+        onChoose={() => {
+          setNeedsLevel(false);
+          setCanLearn(getUnlearnedWords(VOCABULARY).length > 0);
+        }}
+      />
     );
   }
 

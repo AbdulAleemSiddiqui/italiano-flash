@@ -11,12 +11,14 @@ const LEVEL_INTERVALS = [1, 1, 2, 3, 5, 7, 14];
 let storageKey = LEGACY_KEY;
 let streakKey = "italian_a2_streak";
 let reviewCursorKey = "italian_a2_review_cursor";
+let startLevelKey = "italian_a2_start_level";
 
 // Scope progress to the logged-in user so accounts don't mix on shared devices.
 export function setUserScope(userId) {
   storageKey = userId ? `italian_a2_progress_${userId}` : LEGACY_KEY;
   streakKey = userId ? `italian_a2_streak_${userId}` : "italian_a2_streak";
   reviewCursorKey = userId ? `italian_a2_review_cursor_${userId}` : "italian_a2_review_cursor";
+  startLevelKey = userId ? `italian_a2_start_level_${userId}` : "italian_a2_start_level";
 }
 
 function loadProgress() {
@@ -35,12 +37,28 @@ function saveProgress(data) {
 
 // --- Learn ---
 
+// The learner's self-reported Italian level (asked once on first sign-up).
+export function getStartLevel() {
+  const raw = localStorage.getItem(startLevelKey);
+  return raw ? parseInt(raw, 10) : null;
+}
+
+export function setStartLevel(level) {
+  localStorage.setItem(startLevelKey, String(level));
+}
+
 export function getUnlearnedWords(allWords) {
   const records = loadProgress();
-  // Easiest words first — learn in difficulty order.
-  return allWords
-    .filter((w) => !records[w.id])
-    .sort((a, b) => (a.level || 1) - (b.level || 1) || a.id - b.id);
+  const unlearned = allWords.filter((w) => !records[w.id]);
+  const byDifficulty = (a, b) => (a.level || 1) - (b.level || 1) || a.id - b.id;
+  // Serve new words at the learner's self-reported level and above;
+  // fall back to all unlearned words if none are left there.
+  const startLevel = getStartLevel();
+  if (startLevel) {
+    const atLevel = unlearned.filter((w) => (w.level || 1) >= startLevel).sort(byDifficulty);
+    if (atLevel.length) return atLevel;
+  }
+  return unlearned.sort(byDifficulty);
 }
 
 export function markWordLearned(wordId) {

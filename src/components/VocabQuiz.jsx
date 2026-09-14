@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Check, X, Volume2 } from "lucide-react";
@@ -15,6 +15,10 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
   const [score, setScore] = useState(0);
   const [finished, setFinished] = useState(false);
   const [missed, setMissed] = useState([]);
+  const timerRef = useRef(null);
+
+  // Clear any pending auto-advance when leaving the quiz.
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   useEffect(() => {
     setQuestions(shuffle(buildQuestions(words)));
@@ -34,6 +38,9 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
       playWrong();
     }
     recordReview(question.wordId, correct);
+    // Auto-advance: a brief pause on a correct answer, a few seconds on a
+    // wrong one so the user can study the highlighted right answer.
+    timerRef.current = setTimeout(handleNext, correct ? 1000 : 3000);
   };
 
   const handleNext = () => {
@@ -48,6 +55,7 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
 
   // Recap: re-quiz the words the user got wrong this round.
   const retryMissed = () => {
+    clearTimeout(timerRef.current);
     const missedWords = words.filter((w) => missed.includes(w.id));
     setQuestions(shuffle(buildQuestions(missedWords)));
     setMissed([]);
@@ -246,15 +254,8 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
               className="flex flex-col items-center gap-4"
             >
               <p className={`font-bold text-lg ${isCorrect ? "text-emerald-600" : "text-red-500"}`}>
-                {isCorrect ? "Correct! 🎉" : "Not quite — review this one soon."}
+                {isCorrect ? "Correct! 🎉" : "Not quite — the right answer is highlighted."}
               </p>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={handleNext}
-                className="bg-stone-900 text-white font-semibold px-8 py-3.5 rounded-2xl shadow-lg flex items-center gap-2"
-              >
-                {currentQ < questions.length - 1 ? "Next Question" : "See Results"}
-              </motion.button>
             </motion.div>
           )}
         </AnimatePresence>
