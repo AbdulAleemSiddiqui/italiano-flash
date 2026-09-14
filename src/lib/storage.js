@@ -144,6 +144,32 @@ export function getStats(allWords) {
   };
 }
 
+// Words learned per day over the last `days` days (for the activity chart).
+export function getRecentActivity(allWords, days = 7) {
+  const records = loadProgress();
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1)).getTime();
+
+  const counts = Array.from({ length: days }, () => 0);
+  for (const w of allWords) {
+    const r = records[w.id];
+    const d = r?.learnedDate || 0;
+    if (d >= start) {
+      const dayIndex = Math.min(days - 1, Math.floor((d - start) / 86400000));
+      counts[dayIndex] += 1;
+    }
+  }
+
+  return counts.map((count, i) => {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1 - i));
+    return {
+      day: day.toLocaleDateString("en-US", { weekday: "short" }),
+      date: day.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      words: count,
+    };
+  });
+}
+
 // --- Daily streak ---
 
 function dayString(d) {

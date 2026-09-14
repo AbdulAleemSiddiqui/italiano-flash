@@ -4,17 +4,20 @@ import { motion } from "framer-motion";
 import { ArrowLeft, LogOut, BookOpen, RefreshCw, Flame, Trophy } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { VOCABULARY, computeUserLevel } from "@/lib/vocabulary";
-import { getStats, getStreak } from "@/lib/storage";
+import { getStats, getStreak, getRecentActivity } from "@/lib/storage";
+import ActivityDashboard from "@/components/ActivityDashboard";
 
 export default function Profile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [streak, setStreak] = useState(0);
+  const [activity, setActivity] = useState([]);
 
   useEffect(() => {
     setStats(getStats(VOCABULARY));
     setStreak(getStreak());
+    setActivity(getRecentActivity(VOCABULARY, 7));
   }, []);
 
   const initials = (user?.full_name || user?.email || "?").trim().slice(0, 2).toUpperCase();
@@ -74,6 +77,16 @@ export default function Profile() {
             <p className="text-xs text-stone-500">Your Level</p>
           </div>
         </div>
+
+        {/* Visual dashboard */}
+        {stats && (
+          <ActivityDashboard
+            totalLearned={stats.totalLearned}
+            totalWords={stats.totalWords}
+            level={computeUserLevel(stats.totalLearned, stats.totalWords)}
+            activity={activity}
+          />
+        )}
       </div>
 
       {/* Logout */}
