@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { BookOpen, RefreshCw, ChevronRight, Sparkles, Zap } from "lucide-react";
-import { VOCABULARY } from "@/lib/vocabulary";
-import { getStats, getUnlearnedWords, ensureSynced, isReturningVisit } from "@/lib/storage";
+import { BookOpen, RefreshCw, ChevronRight, Sparkles, Zap, Flame, Brain } from "lucide-react";
+import { VOCABULARY, computeUserLevel, wordsToNextLevel } from "@/lib/vocabulary";
+import { getStats, getUnlearnedWords, getStreak, ensureSynced, isReturningVisit } from "@/lib/storage";
 import { useAuth } from "@/lib/AuthContext";
 
 export default function Home() {
@@ -12,6 +12,7 @@ export default function Home() {
   const [canLearn, setCanLearn] = useState(true);
   const [syncing, setSyncing] = useState(true);
   const [welcomeBack, setWelcomeBack] = useState(false);
+  const [streak, setStreak] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -26,6 +27,7 @@ export default function Home() {
       setStats(getStats(VOCABULARY));
       setCanLearn(getUnlearnedWords(VOCABULARY).length > 0);
       setWelcomeBack(isReturningVisit());
+      setStreak(getStreak());
     })();
     return () => {
       mounted = false;
@@ -43,6 +45,8 @@ export default function Home() {
   const progress = Math.round((stats.totalLearned / stats.totalWords) * 100);
   const firstName = (user?.full_name || user?.email || "there").split(" ")[0].split("@")[0];
   const initials = (user?.full_name || user?.email || "?").trim().slice(0, 2).toUpperCase();
+  const userLevel = computeUserLevel(stats.totalLearned, stats.totalWords);
+  const toNext = wordsToNextLevel(stats.totalLearned, stats.totalWords);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-100 flex flex-col">
@@ -56,7 +60,7 @@ export default function Home() {
           >
             <span className="text-3xl">🇮🇹</span>
             <span className="text-xs font-semibold tracking-widest text-stone-400 uppercase">
-              7-Day Exam Prep
+              Spaced Repetition · Listen · Speak
             </span>
           </motion.div>
           <motion.h1
@@ -65,7 +69,7 @@ export default function Home() {
             transition={{ delay: 0.05 }}
             className="text-4xl font-bold text-stone-900 tracking-tight"
           >
-            Italian A2
+            Italian Vocabulary
           </motion.h1>
           <motion.p
             initial={{ opacity: 0 }}
@@ -73,8 +77,25 @@ export default function Home() {
             transition={{ delay: 0.1 }}
             className="text-stone-500 mt-1"
           >
-            Ciao {firstName}! Learn & review daily
+            Ciao {firstName}! A few minutes a day builds fluency
           </motion.p>
+
+          {/* Streak & level badges */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.15 }}
+            className="flex items-center gap-2 mt-3"
+          >
+            <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-xs font-bold px-3 py-1.5 rounded-full">
+              <Flame className="w-3.5 h-3.5" />
+              {streak} day{streak === 1 ? "" : "s"}
+            </span>
+            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-full">
+              <Brain className="w-3.5 h-3.5" />
+              Level {userLevel}
+            </span>
+          </motion.div>
         </div>
         <Link
           to="/profile"
@@ -87,7 +108,9 @@ export default function Home() {
       {/* Progress bar */}
       <div className="px-6 mb-6">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-stone-600">Progress</span>
+          <span className="text-sm font-medium text-stone-600">
+            {userLevel >= 10 ? "Max level reached 🏆" : `Journey to Level ${userLevel + 1}`}
+          </span>
           <span className="text-sm font-bold text-stone-800">
             {stats.totalLearned} / {stats.totalWords} words
           </span>
@@ -100,6 +123,11 @@ export default function Home() {
             className="h-full bg-gradient-to-r from-emerald-500 to-green-600 rounded-full"
           />
         </div>
+        <p className="text-xs text-stone-400 mt-1.5">
+          {userLevel >= 10
+            ? "Keep reviewing to stay sharp!"
+            : `${toNext} more words to unlock Level ${userLevel + 1} 🔓`}
+        </p>
       </div>
 
       {/* Stat cards */}
@@ -169,9 +197,9 @@ export default function Home() {
                 <BookOpen className="w-6 h-6 text-white" />
               </div>
               <div>
-                <p className="text-white font-bold text-lg">Start Learning</p>
+                <p className="text-white font-bold text-lg">Learn New Words</p>
                 <p className="text-emerald-100 text-sm">
-                  {canLearn ? "5 new words waiting" : "All caught up!"}
+                  {canLearn ? "5 new words ready for you" : "All words learned! 🎉"}
                 </p>
               </div>
             </div>
@@ -229,9 +257,7 @@ export default function Home() {
 
       {/* Footer */}
       <div className="px-6 py-6 text-center">
-        <p className="text-xs text-stone-400">
-          Day {Math.min(7, Math.ceil(stats.totalLearned / 15) || 1)} of 7 · Keep going! 💪
-        </p>
+        <p className="text-xs text-stone-400">Little by little, every day 💪</p>
       </div>
     </div>
   );

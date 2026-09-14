@@ -5,6 +5,7 @@ import { ArrowLeft, Check, X, Volume2 } from "lucide-react";
 import { recordReview } from "@/lib/storage";
 import { shuffle, buildQuestions } from "@/lib/quiz";
 import { speakItalian } from "@/lib/speech";
+import { playCorrect, playWrong, playRoundComplete } from "@/lib/sounds";
 
 export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "Nothing to review yet", emptyMessage = "Learn some words first, then come back!" }) {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
   const [selected, setSelected] = useState(null);
   const [score, setScore] = useState(0);
   const [finished, setFinished] = useState(false);
+  const [missed, setMissed] = useState([]);
 
   useEffect(() => {
     setQuestions(shuffle(buildQuestions(words)));
@@ -24,7 +26,13 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
     if (selected !== null) return; // already answered
     setSelected(option);
     const correct = option === question.correctAnswer;
-    if (correct) setScore((s) => s + 1);
+    if (correct) {
+      setScore((s) => s + 1);
+      playCorrect();
+    } else {
+      setMissed((m) => [...m, question.wordId]);
+      playWrong();
+    }
     recordReview(question.wordId, correct);
   };
 
@@ -33,8 +41,20 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
       setCurrentQ((i) => i + 1);
       setSelected(null);
     } else {
+      playRoundComplete();
       setFinished(true);
     }
+  };
+
+  // Recap: re-quiz the words the user got wrong this round.
+  const retryMissed = () => {
+    const missedWords = words.filter((w) => missed.includes(w.id));
+    setQuestions(shuffle(buildQuestions(missedWords)));
+    setMissed([]);
+    setCurrentQ(0);
+    setSelected(null);
+    setScore(0);
+    setFinished(false);
   };
 
   // No words to quiz
@@ -91,6 +111,14 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
         </div>
 
         <div className="flex flex-col gap-3 w-full max-w-xs">
+          {words.filter((w) => missed.includes(w.id)).length > 0 && (
+            <button
+              onClick={retryMissed}
+              className="bg-violet-600 text-white font-semibold px-6 py-3.5 rounded-xl shadow-lg shadow-violet-600/20"
+            >
+              Retry Difficult Words ({words.filter((w) => missed.includes(w.id)).length})
+            </button>
+          )}
           <button
             onClick={() => navigate("/")}
             className="bg-emerald-600 text-white font-semibold px-6 py-3.5 rounded-xl shadow-lg shadow-emerald-600/20"

@@ -9,10 +9,12 @@ const LAST_ACTIVE_KEY = "italian_a2_last_active";
 const LEVEL_INTERVALS = [1, 1, 2, 3, 5, 7, 14];
 
 let storageKey = LEGACY_KEY;
+let streakKey = "italian_a2_streak";
 
 // Scope progress to the logged-in user so accounts don't mix on shared devices.
 export function setUserScope(userId) {
   storageKey = userId ? `italian_a2_progress_${userId}` : LEGACY_KEY;
+  streakKey = userId ? `italian_a2_streak_${userId}` : "italian_a2_streak";
 }
 
 function loadProgress() {
@@ -33,7 +35,10 @@ function saveProgress(data) {
 
 export function getUnlearnedWords(allWords) {
   const records = loadProgress();
-  return allWords.filter((w) => !records[w.id]);
+  // Easiest words first — learn in difficulty order.
+  return allWords
+    .filter((w) => !records[w.id])
+    .sort((a, b) => (a.level || 1) - (b.level || 1) || a.id - b.id);
 }
 
 export function markWordLearned(wordId) {
@@ -46,9 +51,10 @@ export function markWordLearned(wordId) {
     correctCount: 0,
     wrongCount: 0,
     lastReviewed: null,
-  };
-  saveProgress(data);
-  schedulePush(wordId);
+    };
+    saveProgress(data);
+    markStreakActivity();
+    schedulePush(wordId);
 }
 
 // --- Review ---
@@ -86,6 +92,7 @@ export function recordReview(wordId, correct) {
 
   data[wordId] = r;
   saveProgress(data);
+  markStreakActivity();
   schedulePush(wordId);
 }
 
@@ -115,6 +122,49 @@ export function getStats(allWords) {
     totalLearned,
     totalWords: allWords.length,
   };
+}
+
+// --- Daily streak ---
+
+function dayString(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Called whenever the user learns or reviews a word — keeps the streak alive.
+function markStreakActivity() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(streakKey) || "null");
+    const today = dayString(new Date());
+    const yesterday = dayString(new Date(Date.now() - 86400000));
+    let count = 1;
+    if (raw && raw.lastDay === today) count = raw.count;
+    else if (raw && raw.lastDay === yesterday) count = (raw.count || 0) + 1;
+    localStorage.setItem(streakKey, JSON.stringify({ count, lastDay: today }));
+  } catch {
+    // streak is best-effort
+  }
+}
+
+export function getStreak() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(streakKey) || "null");
+    return raw && raw.count ? raw.count : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// --- Difficult words (for recap) ---
+
+// Words the user keeps getting wrong — prioritized in review and quick quiz.
+export function getDifficultWords(allWords) {
+  const records = loadProgress();
+  return allWords
+    .filter((w) => {
+      const r = records[w.id];
+      return r && r.wrongCount > 0 && r.wrongCount >= r.correctCount;
+    })
+    .sort((a, b) => (records[b.id]?.wrongCount || 0) - (records[a.id]?.wrongCount || 0));
 }
 
 // --- Returning-visit detection (drives the quick-quiz prompt) ---

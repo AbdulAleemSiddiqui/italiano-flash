@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, LogOut, BookOpen, RefreshCw } from "lucide-react";
+import { ArrowLeft, LogOut, BookOpen, RefreshCw, Flame, Trophy } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
-import { VOCABULARY } from "@/lib/vocabulary";
-import { getStats } from "@/lib/storage";
+import { VOCABULARY, computeUserLevel } from "@/lib/vocabulary";
+import { getStats, getStreak } from "@/lib/storage";
 
 export default function Profile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
+  const [streak, setStreak] = useState(0);
 
   useEffect(() => {
     setStats(getStats(VOCABULARY));
+    setStreak(getStreak());
   }, []);
 
   const initials = (user?.full_name || user?.email || "?").trim().slice(0, 2).toUpperCase();
@@ -58,6 +60,18 @@ export default function Profile() {
             <RefreshCw className="w-5 h-5 text-amber-600 mx-auto mb-1" />
             <p className="text-2xl font-bold text-stone-900">{stats?.dueReview ?? 0}</p>
             <p className="text-xs text-stone-500">To Review</p>
+          </div>
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 text-center">
+            <Flame className="w-5 h-5 text-orange-600 mx-auto mb-1" />
+            <p className="text-2xl font-bold text-stone-900">{streak}</p>
+            <p className="text-xs text-stone-500">Day Streak</p>
+          </div>
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 text-center">
+            <Trophy className="w-5 h-5 text-violet-600 mx-auto mb-1" />
+            <p className="text-2xl font-bold text-stone-900">
+              {stats ? computeUserLevel(stats.totalLearned, stats.totalWords) : 1}
+            </p>
+            <p className="text-xs text-stone-500">Your Level</p>
           </div>
         </div>
       </div>

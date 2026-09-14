@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronRight, CheckCircle2, Volume2 } from "lucide-react";
 import { VOCABULARY } from "@/lib/vocabulary";
 import { getUnlearnedWords, markWordLearned } from "@/lib/storage";
 import { speakItalian } from "@/lib/speech";
+import { playRoundComplete } from "@/lib/sounds";
 
 const SESSION_SIZE = 5;
 
@@ -31,6 +32,7 @@ export default function Learn() {
       setCurrentIndex((i) => i + 1);
       setShowTranslation(false);
     } else {
+      playRoundComplete();
       setDone(true);
     }
   };
