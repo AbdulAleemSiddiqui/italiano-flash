@@ -22,7 +22,7 @@ export default function VocabQuiz({ words, emptyEmoji = "📚", emptyTitle = "No
 
   useEffect(() => {
     setQuestions(shuffle(buildQuestions(words)));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const question = questions[currentQ];
 

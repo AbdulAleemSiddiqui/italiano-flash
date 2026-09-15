@@ -1,5 +1,5 @@
-// Progress storage: localStorage (fast, offline) + per-user sync to the WordProgress entity.
-import { base44 } from "@/api/base44Client";
+// Progress storage: localStorage (fast, offline) + per-user sync to the word_progress table (Supabase).
+import { supabase } from "@/api/supabaseClient";
 
 const LEGACY_KEY = "italian_a2_progress"; // pre-login data on this device
 const LAST_ACTIVE_KEY = "italian_a2_last_active";
@@ -247,7 +247,8 @@ export function isReturningVisit() {
 
 // --- Server sync (per-user, survives device changes) ---
 
-let entityIdMap = null; // word_id -> WordProgress record id
+let currentUserId = null;
+let rowIdMap = null; // word_id -> word_progress row id
 
 function toServerPayload(wordId, rec) {
   return {
@@ -264,8 +265,10 @@ function toServerPayload(wordId, rec) {
 // Load server progress, merge with this device's data, migrate pre-login
 // (legacy) memorized words, and push anything the server doesn't have yet.
 export async function ensureSynced(userId) {
+  if (!userId) return;
   setUserScope(userId);
-  entityIdMap = {};
+  currentUserId = userId;
+  rowIdMap = {};
 
   const merged = loadProgress();
 
@@ -286,9 +289,15 @@ export async function ensureSynced(userId) {
   }
 
   // Merge in server records (server wins when more recent).
-  const serverRecords = await base44.entities.WordProgress.list("-updated_date", 500);
+  const { data: serverRecords, error } = await supabase
+    .from("word_progress")
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
   for (const r of serverRecords) {
-    entityIdMap[r.word_id] = r.id;
+    rowIdMap[r.word_id] = r.id;
     const local = merged[r.word_id];
     const serverStamp = r.last_reviewed || r.learned_date || 0;
     const localStamp = local ? local.lastReviewed || local.learnedDate || 0 : 0;
@@ -307,12 +316,19 @@ export async function ensureSynced(userId) {
   // Push any local/legacy records the server doesn't have yet.
   const missing = Object.keys(merged)
     .map(Number)
-    .filter((id) => !entityIdMap[id]);
+    .filter((id) => !rowIdMap[id]);
   if (missing.length) {
-    const payloads = missing.map((id) => toServerPayload(id, merged[id]));
-    const created = await base44.entities.WordProgress.bulkCreate(payloads);
-    created.forEach((rec, i) => {
-      entityIdMap[payloads[i].word_id] = rec.id;
+    const payloads = missing.map((id) => ({
+      user_id: userId,
+      ...toServerPayload(id, merged[id]),
+    }));
+    const { data: created, error: insertError } = await supabase
+      .from("word_progress")
+      .insert(payloads)
+      .select("id, word_id");
+    if (insertError) throw insertError;
+    created.forEach((rec) => {
+      rowIdMap[rec.word_id] = rec.id;
     });
   }
 
@@ -331,6 +347,7 @@ export function schedulePush(wordId) {
 }
 
 async function flushPending() {
+  if (!currentUserId) return;
   const ids = [...pendingIds];
   pendingIds = new Set();
   flushTimer = null;
@@ -339,18 +356,38 @@ async function flushPending() {
     const rec = local[id];
     if (!rec) continue;
     try {
-      if (entityIdMap && entityIdMap[id]) {
-        await base44.entities.WordProgress.update(entityIdMap[id], toServerPayload(id, rec));
+      if (rowIdMap && rowIdMap[id]) {
+        const { error } = await supabase
+          .from("word_progress")
+          .update(toServerPayload(id, rec))
+          .eq("id", rowIdMap[id]);
+        if (error) throw error;
       } else {
-        const existing = await base44.entities.WordProgress.filter({ word_id: id });
+        // Row not loaded this visit — look for it, else create it.
+        const { data: existing, error: selectError } = await supabase
+          .from("word_progress")
+          .select("id")
+          .eq("user_id", currentUserId)
+          .eq("word_id", id)
+          .limit(1);
+        if (selectError) throw selectError;
         if (existing.length) {
-          entityIdMap = entityIdMap || {};
-          entityIdMap[id] = existing[0].id;
-          await base44.entities.WordProgress.update(existing[0].id, toServerPayload(id, rec));
+          rowIdMap = rowIdMap || {};
+          rowIdMap[id] = existing[0].id;
+          const { error } = await supabase
+            .from("word_progress")
+            .update(toServerPayload(id, rec))
+            .eq("id", existing[0].id);
+          if (error) throw error;
         } else {
-          const created = await base44.entities.WordProgress.create(toServerPayload(id, rec));
-          entityIdMap = entityIdMap || {};
-          entityIdMap[id] = created.id;
+          const { data: created, error: insertError } = await supabase
+            .from("word_progress")
+            .insert({ user_id: currentUserId, ...toServerPayload(id, rec) })
+            .select("id")
+            .single();
+          if (insertError) throw insertError;
+          rowIdMap = rowIdMap || {};
+          rowIdMap[id] = created.id;
         }
       }
     } catch (e) {

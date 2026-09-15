@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,8 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await base44.auth.loginViaEmailPassword(email, password);
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
       window.location.href = returnTo;
     } catch (err) {
       setError(err.message || "Invalid email or password");
@@ -33,7 +34,11 @@ export default function Login() {
   };
 
   const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", returnTo);
+    // Land the user back on the page they came from once OAuth completes.
+    supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + returnTo },
+    });
   };
 
   return (

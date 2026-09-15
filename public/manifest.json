@@ -1,0 +1,16 @@
+{
+  "name": "Italian Vocabulary — Learn, Hear & Remember",
+  "short_name": "Italiano Flash",
+  "description": "Learn Italian vocabulary with spaced repetition, audio pronunciation and daily practice.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

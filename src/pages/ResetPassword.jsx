@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,12 +9,37 @@ import AuthLayout from "@/components/AuthLayout";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
-  const resetToken = searchParams.get("token");
+
+  // The recovery email link lands here with a one-time ?code=... (PKCE flow).
+  // Exchanging it signs the user in; the new password is then set via updateUser.
+  const [exchangeState, setExchangeState] = useState(
+    searchParams.get("code") ? "exchanging" : "pending"
+  );
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    const code = searchParams.get("code");
+    if (!code) return;
+    supabase.auth
+      .exchangeCodeForSession(code)
+      .then(({ error }) => {
+        if (error) {
+          setExchangeState("invalid");
+        } else {
+          setExchangeState("ready");
+          // The recovery link doubles as a sign-in; the URL cleanup avoids
+          // a second exchange attempt if the user reloads this page.
+          window.history.replaceState({}, "", "/reset-password");
+        }
+      })
+      .catch(() => setExchangeState("invalid"));
+     
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,8 +50,9 @@ export default function ResetPassword() {
     }
     setLoading(true);
     try {
-      await base44.auth.resetPassword({ resetToken, newPassword });
-      window.location.href = "/login";
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setDone(true);
     } catch (err) {
       setError(err.message || "Failed to reset password");
     } finally {
@@ -34,12 +60,23 @@ export default function ResetPassword() {
     }
   };
 
-  if (!resetToken) {
+  if (exchangeState === "exchanging") {
+    return (
+      <AuthLayout icon={Lock} title="Resetting password" subtitle="Verifying your reset link...">
+        <div className="flex justify-center py-4">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (exchangeState === "invalid" || (!done && exchangeState !== "ready")) {
+    // No valid recovery session: either the link is missing/used/expired.
     return (
       <AuthLayout
         icon={AlertTriangle}
         title="Invalid reset link"
-        subtitle="This password reset link is missing or invalid"
+        subtitle="This password reset link is missing, invalid, or has expired"
         footer={
           <Link to="/forgot-password" className="text-primary font-medium hover:underline">
             Request a new link
@@ -47,7 +84,26 @@ export default function ResetPassword() {
         }
       >
         <p className="text-sm text-foreground text-center">
-          The link you used appears to be incomplete. Please request a new password reset email.
+          Please request a new password reset email and open the latest link.
+        </p>
+      </AuthLayout>
+    );
+  }
+
+  if (done) {
+    return (
+      <AuthLayout
+        icon={Lock}
+        title="Password updated"
+        subtitle="Your password has been changed"
+        footer={
+          <Link to="/login" className="text-primary font-medium hover:underline">
+            Back to log in
+          </Link>
+        }
+      >
+        <p className="text-sm text-foreground text-center">
+          You can now log in with your new password.
         </p>
       </AuthLayout>
     );
