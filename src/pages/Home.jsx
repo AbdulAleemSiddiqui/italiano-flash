@@ -76,7 +76,7 @@ export default function Home() {
           >
             <span className="text-3xl">🇮🇹</span>
             <span className="text-xs font-semibold tracking-widest text-stone-400 uppercase">
-              Spaced Repetition · Listen · Speak
+              Vocab is everything
             </span>
           </motion.div>
           <motion.h1
